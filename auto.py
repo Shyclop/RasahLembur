@@ -1,10 +1,20 @@
-import time
-from datetime import date, datetime
+import json
 import os
+import random
+import re
+import subprocess
+import tempfile
+import threading
+import time
+import urllib.request
+from datetime import date, datetime
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-import threading
-import random
+
+APP_NAME = "RaSahLembur"
+APP_VERSION = "1.1"
+GITHUB_REPO = "Shyclop/RasahLembur"
+UPDATE_CHECK_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 try:
     import pyautogui
@@ -512,6 +522,9 @@ class ExcelAutomationUI:
         self.execute_btn = ttk.Button(button_frame, text="Execute Automation", command=self.execute_automation)
         self.register_text_widget(self.execute_btn, "execute")
         self.execute_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.update_btn = ttk.Button(button_frame, text="Check Update", command=self.check_for_updates)
+        self.update_btn.pack(side=tk.LEFT, padx=(0, 5))
         
         self.preview_btn = ttk.Button(button_frame, text="Preview Data", command=self.preview_data)
         self.register_text_widget(self.preview_btn, "preview_data")
@@ -1057,6 +1070,59 @@ class ExcelAutomationUI:
 
         return True
 
+    def check_for_updates(self):
+        self.update_btn.config(state=tk.DISABLED)
+        try:
+            latest_release = get_latest_release(GITHUB_REPO)
+            if not latest_release:
+                self.update_status("Update check failed", "orange")
+                return
+
+            latest_tag = latest_release.get("tag_name", "")
+            asset = find_release_asset(latest_release, APP_NAME)
+            if not asset:
+                self.update_status(f"No installer found for {latest_tag}", "orange")
+                return
+
+            if _version_to_tuple(latest_tag) <= _version_to_tuple(APP_VERSION):
+                self.update_status(f"You are on the latest version ({APP_VERSION})", "green")
+                return
+
+            download_url = asset.get("browser_download_url")
+            if not download_url:
+                self.update_status("Update asset URL missing", "orange")
+                return
+
+            confirm = messagebox.askyesno(
+                "Update available",
+                f"A newer version ({latest_tag}) is available.\n\nDo you want to download and install it now?",
+            )
+            if confirm:
+                self.download_and_install_update(download_url, asset.get("name", f"{APP_NAME}Installer.exe"))
+        except Exception as exc:
+            self.update_status(f"Update check error: {exc}", "red")
+        finally:
+            self.update_btn.config(state=tk.NORMAL)
+
+    def download_and_install_update(self, download_url, file_name):
+        if GITHUB_REPO == "YOUR_USERNAME/YOUR_REPO":
+            messagebox.showinfo("Update not configured", "Please set the GitHub repo in the code before enabling automatic updates.")
+            return
+
+        temp_dir = tempfile.gettempdir()
+        local_path = os.path.join(temp_dir, file_name)
+        self.update_status("Downloading update...", "orange")
+        try:
+            urllib.request.urlretrieve(download_url, local_path)
+            messagebox.showinfo("Update ready", f"Installer downloaded to:\n{local_path}\n\nRun it to complete the update.")
+            self.update_status("Update downloaded", "green")
+            if os.path.exists(local_path):
+                subprocess.Popen([local_path], shell=True)
+                self.root.after(500, self.root.destroy)
+        except Exception as exc:
+            self.update_status(f"Download failed: {exc}", "red")
+            messagebox.showerror("Update failed", str(exc))
+
     def run_automation(self, col, start_row, end_row):
         try:
             # Reset countdown at start
@@ -1209,6 +1275,50 @@ class ExcelAutomationUI:
         
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+def _version_to_tuple(value):
+    version_text = str(value or "")
+    match = re.search(r"(\d+(?:\.\d+)+)", version_text)
+    if not match:
+        return (0,)
+    return tuple(int(part) for part in match.group(1).split("."))
+
+
+def find_release_asset(release, app_name):
+    assets = release.get("assets", []) if isinstance(release, dict) else []
+    if not assets:
+        return None
+
+    app_key = (app_name or "").lower()
+    candidates = []
+    for asset in assets:
+        name = str(asset.get("name", "")).lower()
+        if not name.endswith(".exe"):
+            continue
+        if app_key and app_key in name:
+            candidates.append(asset)
+        elif "installer" in name or "setup" in name:
+            candidates.append(asset)
+
+    if candidates:
+        return candidates[0]
+
+    for asset in assets:
+        if str(asset.get("name", "")).lower().endswith(".exe"):
+            return asset
+    return None
+
+
+def get_latest_release(repo_name):
+    if not repo_name or repo_name == "YOUR_USERNAME/YOUR_REPO":
+        return None
+
+    url = f"https://api.github.com/repos/{repo_name}/releases/latest"
+    request = urllib.request.Request(url, headers={"User-Agent": "RaSahLembur-Updater"})
+    with urllib.request.urlopen(request, timeout=20) as response:
+        data = response.read()
+    return json.loads(data)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
