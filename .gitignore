@@ -1,0 +1,28 @@
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+.env/
+
+# Build / packaging outputs
+build/
+dist/
+*.spec.user
+*.pyinstaller/
+
+# Installer outputs and generated artifacts
+Output/
+*.exe
+*.msi
+*.zip
+
+# Editor / OS files
+.vscode/
+.DS_Store
+Thumbs.db
